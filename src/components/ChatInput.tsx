@@ -2,15 +2,23 @@
 
 import { cn } from '@/lib/utils';
 import { useMutation } from '@tanstack/react-query';
-import { FC, HTMLAttributes, useState } from 'react';
+import { FC, HTMLAttributes, useContext, useState } from 'react';
 import { nanoid } from 'nanoid';
 import TextareaAutosize from 'react-textarea-autosize';
 import { Message } from '@/lib/validators/message';
+import { MessagesContext } from '@/context/messages';
 
 interface ChatInputProps extends HTMLAttributes<HTMLDivElement> {}
 
 const ChatInput: FC<ChatInputProps> = ({ className, ...props }) => {
   const [input, setInput] = useState<string>('');
+  const {
+    messages,
+    addMessage,
+    removeMessage,
+    updateMessage,
+    setIsMessageUpdating,
+  } = useContext(MessagesContext);
 
   const { mutate: sendMessage, isLoading } = useMutation({
     mutationFn: async (message: Message) => {
@@ -24,8 +32,19 @@ const ChatInput: FC<ChatInputProps> = ({ className, ...props }) => {
 
       return response.body;
     },
-    onSuccess: () => {
-      console.log('success');
+    onSuccess: async (stream) => {
+      if (!stream) throw new Error('No stream');
+
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        const chunkValue = decoder.decode(value);
+        // updatedMessage(id, (prev) => prev + chunkValue)
+      }
     },
   });
 
