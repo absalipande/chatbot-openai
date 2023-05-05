@@ -2,15 +2,17 @@
 
 import { cn } from '@/lib/utils';
 import { useMutation } from '@tanstack/react-query';
-import { FC, HTMLAttributes, useContext, useState } from 'react';
+import { FC, HTMLAttributes, useContext, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import TextareaAutosize from 'react-textarea-autosize';
 import { Message } from '@/lib/validators/message';
 import { MessagesContext } from '@/context/messages';
+import { toast } from 'react-hot-toast';
 
 interface ChatInputProps extends HTMLAttributes<HTMLDivElement> {}
 
 const ChatInput: FC<ChatInputProps> = ({ className, ...props }) => {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [input, setInput] = useState<string>('');
   const {
     messages,
@@ -21,19 +23,35 @@ const ChatInput: FC<ChatInputProps> = ({ className, ...props }) => {
   } = useContext(MessagesContext);
 
   const { mutate: sendMessage, isLoading } = useMutation({
-    mutationFn: async (message: Message) => {
+    mutationFn: async (_message: Message) => {
       const response = await fetch('/api/message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ messages: [message] }),
+        body: JSON.stringify({ messages }),
       });
 
       return response.body;
     },
+    onMutate(message) {
+      addMessage(message);
+    },
     onSuccess: async (stream) => {
       if (!stream) throw new Error('No stream');
+
+      // construct new message to add
+      const id = nanoid();
+      const responseMessage: Message = {
+        id,
+        isUserMessage: false,
+        text: '',
+      };
+
+      // add new message to the state
+      addMessage(responseMessage);
+
+      setIsMessageUpdating(true);
 
       const reader = stream.getReader();
       const decoder = new TextDecoder();
@@ -43,8 +61,21 @@ const ChatInput: FC<ChatInputProps> = ({ className, ...props }) => {
         const { value, done: doneReading } = await reader.read();
         done = doneReading;
         const chunkValue = decoder.decode(value);
-        // updatedMessage(id, (prev) => prev + chunkValue)
+        updateMessage(id, (prev) => prev + chunkValue);
       }
+
+      // clean up
+      setIsMessageUpdating(false);
+      setInput('');
+
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 10);
+    },
+    onError: (_, message) => {
+      toast.error('Something went wrong. Please try again');
+      removeMessage(message.id);
+      textareaRef.current?.focus();
     },
   });
 
